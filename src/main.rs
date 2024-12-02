@@ -23,6 +23,7 @@ fn day1_part1() -> u32 {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)]
 fn day1_part2() -> u32 {
     let mut lhs: Vec<u32> = Vec::new();
     let mut rhs: HashMap<u32, u32> = HashMap::new();
@@ -49,7 +50,40 @@ fn day1_part2() -> u32 {
     similarity
 }
 
+fn create_report(line: &str) -> Vec<i32> {
+    line.split_whitespace().map(|x| x.trim().parse::<i32>().expect("Parse error")).collect()
+}
+
+fn is_safe(report: &[i32]) -> bool {
+    if report.len() <= 1 {
+        return report.len() == 1;
+    }
+    let increasing = report[0] < report[1];
+    for i in 0..(report.len()-1) {
+        if increasing && report[i] >= report[i+1] {
+            return false;
+        }
+        if !increasing && report[i] <= report[i+1] {
+            return false;
+        }
+        if report[i].abs_diff(report[i+1]) > 3 {
+            return false;
+        }
+    }
+    true
+}
+
+#[allow(dead_code)]
+fn day2_part1() -> usize {
+    let filename = "inputs/day2.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    contents.split("\n")
+        .map(create_report)
+        .filter(|x| is_safe(x))
+        .count()
+}
+
 fn main() {
-    let result = day1_part2();
+    let result = day2_part1();
     println!("result={result}");
 }
