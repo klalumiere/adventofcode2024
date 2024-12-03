@@ -1,4 +1,5 @@
 use std::{collections::HashMap, fs};
+use regex::Regex;
 
 #[allow(dead_code)]
 fn day1_part1() -> u32 {
@@ -130,7 +131,17 @@ fn day2_part2() -> usize {
         .count()
 }
 
+#[allow(dead_code)]
+fn day3_part1() -> i32 {
+    let filename = "inputs/day3.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let re = Regex::new(r"mul\((\d+),(\d+)\)").expect("Invalid regex");
+    re.captures_iter(&contents)
+        .map(|x| x[1].parse::<i32>().expect("Parse error") * x[2].parse::<i32>().expect("Parse error"))
+        .sum()
+}
+
 fn main() {
-    let result = day2_part2();
+    let result = day3_part1();
     println!("result={result}");
 }
