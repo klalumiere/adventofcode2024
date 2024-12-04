@@ -141,7 +141,47 @@ fn day3_part1() -> i32 {
         .sum()
 }
 
+fn filter_dont(contents: &str) -> String {
+    let do_instruction = "do()";
+    let dont_instruction = "don't()";
+    let mut result = String::with_capacity(contents.len());
+    let mut start: usize = 0;
+    let mut add_end_of_file = true;
+    loop {
+        match contents[start..].find(dont_instruction) {
+            None => break,
+            Some(relative_dont_position) => {
+                add_end_of_file = false;
+                let dont_position = start + relative_dont_position;
+                result.push_str(&contents[start..dont_position]);
+                match contents[dont_position..].find(do_instruction) {
+                    None => break,
+                    Some(relative_do_position) => {
+                        let do_position = dont_position + relative_do_position;
+                        start = do_position + do_instruction.len() - 1;
+                        add_end_of_file = true;
+                    }
+                }
+            }
+        }
+    }
+    if add_end_of_file && start < contents.len() {
+        result.push_str(&contents[start..]);
+    }
+    result
+}
+
+#[allow(dead_code)]
+fn day3_part2() -> i32 {
+    let filename = "inputs/day3.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let re = Regex::new(r"mul\((\d+),(\d+)\)").expect("Invalid regex");
+    re.captures_iter(filter_dont(&contents).as_str())
+        .map(|x| x[1].parse::<i32>().expect("Parse error") * x[2].parse::<i32>().expect("Parse error"))
+        .sum()
+}
+
 fn main() {
-    let result = day3_part1();
+    let result = day3_part2();
     println!("result={result}");
 }
