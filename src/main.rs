@@ -376,8 +376,96 @@ fn day4_part2() -> usize {
     total
 }
 
+#[derive(Debug)]
+struct Rule {
+    first: usize,
+    then: usize,
+}
+
+#[derive(Debug)]
+struct Update {
+    #[allow(dead_code)]
+    pages: Vec<usize>,
+
+    middle_page: usize,
+    page_to_index: HashMap<usize, usize>,
+}
+
+impl Rule {
+    fn from(string: &str) -> Rule {
+        let parts: Vec<&str> = string.split("|").collect();
+        Rule {
+            first: parts[0].parse().expect("can't parse number"),
+            then: parts[1].parse().expect("can't parse number")
+        }
+    }
+
+    fn is_respected(&self, update: &Update) -> bool {
+        let index_first = update.page_to_index.get(&self.first);
+        let index_then = update.page_to_index.get(&self.then);
+        match index_first {
+            None => true,
+            Some(index_first) => {
+                match index_then {
+                    None => true,
+                    Some(index_then) => {
+                        index_first < index_then
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Update {
+    fn from(string: &str) -> Update {
+        let mut pages: Vec<usize> = Vec::new();
+        for part in string.split(",") {
+            pages.push(part.parse().expect("can't parse number"));
+        }
+        if pages.len() % 2 == 0 {
+            panic!("Invalid number of pages: there's nomiddle page");
+        }
+        let middle_page = pages[pages.len()/2];
+        let mut page_to_index: HashMap<usize, usize> = HashMap::new();
+        for (i, page) in pages.iter().enumerate() {
+            page_to_index.insert(*page, i);
+        }
+        Update { pages, middle_page, page_to_index }
+    }
+
+    fn respects_all(&self, rules: &Vec<Rule>) -> bool {
+        for rule in rules {
+            if ! rule.is_respected(self) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[allow(dead_code)]
+fn day5_part1() -> usize {
+    let filename = "inputs/day5.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let lines: Vec<&str> = contents.lines().collect();
+    let mut rules: Vec<Rule> = Vec::new();
+    let mut updates: Vec<Update> = Vec::new();
+    let mut first_update_index = 0;
+    for (i, line) in lines.iter().enumerate() {
+        if line.is_empty() {
+            first_update_index = i + 1;
+            break;
+        }
+        rules.push(Rule::from(line));
+    }
+    for line in &lines[first_update_index..] {
+        updates.push(Update::from(line));
+    }
+    updates.iter().filter(|update| update.respects_all(&rules)).map(|update| update.middle_page).sum()
+}
 
 fn main() {
-    let result = day4_part2();
+    let result = day5_part1();
     println!("result={result}");
 }
