@@ -181,7 +181,140 @@ fn day3_part2() -> i32 {
         .sum()
 }
 
+struct XmasAutomata {
+    state: char,
+}
+
+const XMAS_AUTOMATA_BEGIN_STATE: char = 'X';
+const XMAS_AUTOMATA_END_STATE: char = '\0';
+
+impl Default for XmasAutomata {
+    fn default() -> Self {
+        XmasAutomata { state: XMAS_AUTOMATA_BEGIN_STATE }
+    }
+}
+
+impl XmasAutomata {
+    fn transit(&self, character: char) -> (bool, XmasAutomata) {
+        let transitions = HashMap::from([
+            (XMAS_AUTOMATA_BEGIN_STATE, 'M'),
+            ('M', 'A'),
+            ('A', 'S'),
+            ('S', XMAS_AUTOMATA_END_STATE),
+        ]);
+        if self.state == character {
+            (true, XmasAutomata { state: transitions[&self.state] })
+        } else {
+            (false, XmasAutomata { state: self.state })
+        }
+    }
+}
+
+fn get_indexes_around (i: usize, j: usize) -> Vec<(i32,i32)> {
+    let i = i32::try_from(i).ok().unwrap();
+    let j = i32::try_from(j).ok().unwrap();
+    vec![
+        (i-1, j-1),
+        (i-1, j),
+        (i-1, j+1),
+        (i, j-1),
+        (i, j+1),
+        (i+1, j-1),
+        (i+1, j),
+        (i+1, j+1),
+    ]
+}
+
+fn calculate_delta(initial: (usize, usize), actual: (usize, usize)) -> (i32, i32) {
+    let (i, j) = initial;
+    let (k, l) = actual;
+    let i = i32::try_from(i).ok().unwrap();
+    let j = i32::try_from(j).ok().unwrap();
+    let k = i32::try_from(k).ok().unwrap();
+    let l = i32::try_from(l).ok().unwrap();
+    (k - i, l - j)
+}
+
+fn advance(initial: (usize, usize), direction: (i32, i32)) -> (i32, i32) {
+    let (i, j) = initial;
+    let (delta_i, delta_j) = direction;
+    let i = i32::try_from(i).ok().unwrap();
+    let j = i32::try_from(j).ok().unwrap();
+    (i + delta_i, j + delta_j)
+}
+
+fn is_bounded(indices: (i32, i32), char_matrix: &Vec<Vec<char>>) -> bool {
+    let (i, j) = indices;
+    let len_i = i32::try_from(char_matrix.len()).ok().unwrap();
+    let len_j = i32::try_from(char_matrix[0].len()).ok().unwrap();
+    i >= 0 && i < len_i && j >= 0 && j < len_j
+}
+
+fn bound_indices(indices: (i32, i32), char_matrix: &Vec<Vec<char>>) -> (usize, usize) {
+    let (i, j) = indices;
+    let len_i = i32::try_from(char_matrix.len()).ok().unwrap();
+    let len_j = i32::try_from(char_matrix[0].len()).ok().unwrap();
+    let (i, j) = (i.max(0).min(len_i - 1), j.max(0).min(len_j-1));
+    (usize::try_from(i).ok().unwrap(), usize::try_from(j).ok().unwrap())
+}
+
+fn explore_char_matrix(char_matrix: &Vec<Vec<char>>, i: usize, j: usize, xmas: XmasAutomata) -> usize {
+    let mut total: usize = 0;
+    for (k, l) in get_indexes_around(i, j) {
+        if ! is_bounded((k, l), char_matrix) {
+            continue;
+        }
+        let (k, l) = bound_indices((k, l), char_matrix);
+        let (transitioned, new_xmas) = xmas.transit(char_matrix[k][l]);
+        if transitioned {
+            let direction = calculate_delta((i, j), (k, l));
+            let mut m = k;
+            let mut n = l;
+            let mut transitioned;
+            let mut new_xmas = new_xmas;
+            loop {
+                if new_xmas.state == XMAS_AUTOMATA_END_STATE {
+                    total += 1;
+                    break;
+                }
+                if ! is_bounded(advance((m, n), direction), char_matrix) {
+                    break;
+                }
+                (m, n) = bound_indices(advance((m, n), direction), char_matrix);
+                (transitioned, new_xmas) = new_xmas.transit(char_matrix[m][n]);
+                if ! transitioned {
+                    break;
+                }
+            }
+        }
+    }
+    total
+}
+
+#[allow(dead_code)]
+fn day4_part1() -> usize {
+    let filename = "inputs/day4.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let char_matrix: Vec<Vec<char>> = contents
+        .lines()
+        .map(|line| line.chars().collect())
+        .collect();
+    let mut total: usize = 0;
+    for i in 0..char_matrix.len() {
+        for j in 0..char_matrix[i].len() {
+            if char_matrix[i][j] != XMAS_AUTOMATA_BEGIN_STATE {
+                continue;
+            }
+            let (_, xmas) = XmasAutomata::default().transit(char_matrix[i][j]);
+            total += explore_char_matrix(&char_matrix, i, j, xmas);
+        }
+    }
+    total
+}
+
+
+
 fn main() {
-    let result = day3_part2();
+    let result = day4_part1();
     println!("result={result}");
 }
