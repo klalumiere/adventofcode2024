@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, collections::HashSet, fs};
 use regex::Regex;
 
 #[allow(dead_code)]
@@ -187,7 +187,6 @@ struct XmasAutomata {
 
 const XMAS_AUTOMATA_BEGIN_STATE: char = 'X';
 const XMAS_AUTOMATA_END_STATE: char = '\0';
-
 impl Default for XmasAutomata {
     fn default() -> Self {
         XmasAutomata { state: XMAS_AUTOMATA_BEGIN_STATE }
@@ -225,6 +224,24 @@ fn get_indexes_around (i: usize, j: usize) -> Vec<(i32,i32)> {
     ]
 }
 
+fn get_main_diagonal (i: usize, j: usize) -> Vec<(i32,i32)> {
+    let i = i32::try_from(i).ok().unwrap();
+    let j = i32::try_from(j).ok().unwrap();
+    vec![
+        (i-1, j-1),
+        (i+1, j+1),
+    ]
+}
+
+fn get_counter_diagonal (i: usize, j: usize) -> Vec<(i32,i32)> {
+    let i = i32::try_from(i).ok().unwrap();
+    let j = i32::try_from(j).ok().unwrap();
+    vec![
+        (i-1, j+1),
+        (i+1, j-1),
+    ]
+}
+
 fn calculate_delta(initial: (usize, usize), actual: (usize, usize)) -> (i32, i32) {
     let (i, j) = initial;
     let (k, l) = actual;
@@ -258,7 +275,7 @@ fn bound_indices(indices: (i32, i32), char_matrix: &Vec<Vec<char>>) -> (usize, u
     (usize::try_from(i).ok().unwrap(), usize::try_from(j).ok().unwrap())
 }
 
-fn explore_char_matrix(char_matrix: &Vec<Vec<char>>, i: usize, j: usize, xmas: XmasAutomata) -> usize {
+fn explore_char_matrix_for_xmas(char_matrix: &Vec<Vec<char>>, i: usize, j: usize, xmas: XmasAutomata) -> usize {
     let mut total: usize = 0;
     for (k, l) in get_indexes_around(i, j) {
         if ! is_bounded((k, l), char_matrix) {
@@ -291,6 +308,33 @@ fn explore_char_matrix(char_matrix: &Vec<Vec<char>>, i: usize, j: usize, xmas: X
     total
 }
 
+fn explore_char_matrix_for_mas(char_matrix: &Vec<Vec<char>>, i: usize, j: usize) -> usize {
+    let main_diagonal = get_main_diagonal(i, j);
+    let counter_diagonal = get_counter_diagonal(i, j);
+    let mut main_diagonal_chars: HashSet<char> = HashSet::with_capacity(main_diagonal.len());
+    let mut counter_diagonal_chars: HashSet<char> = HashSet::with_capacity(counter_diagonal.len());
+    for (k, l) in main_diagonal {
+        if ! is_bounded((k, l), char_matrix) {
+            return 0;
+        }
+        let (k, l) = bound_indices((k, l), char_matrix);
+        main_diagonal_chars.insert(char_matrix[k][l]);
+    }
+    for (k, l) in counter_diagonal {
+        if ! is_bounded((k, l), char_matrix) {
+            return 0;
+        }
+        let (k, l) = bound_indices((k, l), char_matrix);
+        counter_diagonal_chars.insert(char_matrix[k][l]);
+    }
+    if main_diagonal_chars.contains(&'M') && main_diagonal_chars.contains(&'S')
+        && counter_diagonal_chars.contains(&'M') && counter_diagonal_chars.contains(&'S')
+    {
+        return 1;
+    }
+    0
+}
+
 #[allow(dead_code)]
 fn day4_part1() -> usize {
     let filename = "inputs/day4.txt";
@@ -306,15 +350,34 @@ fn day4_part1() -> usize {
                 continue;
             }
             let (_, xmas) = XmasAutomata::default().transit(char_matrix[i][j]);
-            total += explore_char_matrix(&char_matrix, i, j, xmas);
+            total += explore_char_matrix_for_xmas(&char_matrix, i, j, xmas);
+        }
+    }
+    total
+}
+
+#[allow(dead_code)]
+fn day4_part2() -> usize {
+    let filename = "inputs/day4.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let char_matrix: Vec<Vec<char>> = contents
+        .lines()
+        .map(|line| line.chars().collect())
+        .collect();
+    let mut total: usize = 0;
+    for i in 0..char_matrix.len() {
+        for j in 0..char_matrix[i].len() {
+            if char_matrix[i][j] != 'A' {
+                continue;
+            }
+            total += explore_char_matrix_for_mas(&char_matrix, i, j);
         }
     }
     total
 }
 
 
-
 fn main() {
-    let result = day4_part1();
+    let result = day4_part2();
     println!("result={result}");
 }
