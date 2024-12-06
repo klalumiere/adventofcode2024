@@ -1,4 +1,4 @@
-use std::{collections::HashMap, collections::HashSet, fs};
+use std::{cmp::Ordering, collections::{HashMap, HashSet}, fs};
 use regex::Regex;
 
 #[allow(dead_code)]
@@ -415,6 +415,16 @@ impl Rule {
             }
         }
     }
+
+    fn compare(&self, lhs: &usize, rhs: &usize) -> Ordering {
+        if *lhs == self.first && *rhs == self.then {
+            return Ordering::Less;
+        }
+        if *lhs == self.then && *rhs == self.first {
+            return Ordering::Greater;
+        }
+        Ordering::Equal
+    }
 }
 
 impl Update {
@@ -444,6 +454,16 @@ impl Update {
     }
 }
 
+fn compare(rules: &[Rule], lhs: &usize, rhs: &usize) -> Ordering {
+    for rule in rules {
+        let ordering = rule.compare(lhs, rhs);
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    Ordering::Equal
+}
+
 #[allow(dead_code)]
 fn day5_part1() -> usize {
     let filename = "inputs/day5.txt";
@@ -465,7 +485,157 @@ fn day5_part1() -> usize {
     updates.iter().filter(|update| update.respects_all(&rules)).map(|update| update.middle_page).sum()
 }
 
+#[allow(dead_code)]
+fn day5_part2() -> usize {
+    let filename = "inputs/day5.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let lines: Vec<&str> = contents.lines().collect();
+    let mut rules: Vec<Rule> = Vec::new();
+    let mut updates: Vec<Update> = Vec::new();
+    let mut first_update_index = 0;
+    for (i, line) in lines.iter().enumerate() {
+        if line.is_empty() {
+            first_update_index = i + 1;
+            break;
+        }
+        rules.push(Rule::from(line));
+    }
+    for line in &lines[first_update_index..] {
+        updates.push(Update::from(line));
+    }
+    updates.iter().filter(|update| !update.respects_all(&rules))
+        .map(|update| {
+            let mut pages = update.pages.clone();
+            pages.sort_by(|lhs, rhs| compare(&rules, lhs, rhs));
+            pages[pages.len()/2]
+        })
+        .sum()
+}
+
+enum Direction {
+    North,
+    East,
+    South,
+    West,
+}
+
+fn get_delta(direction: & Direction) -> (isize, isize) {
+    match direction {
+        Direction::North => (0, 1),
+        Direction::East => (1, 0),
+        Direction::South => (0, -1),
+        Direction::West => (-1, 0),
+    }
+}
+
+fn convert_to_isize(position: (usize, usize)) -> (isize, isize) {
+    let i: isize = position.0.try_into().unwrap();
+    let j: isize = position.1.try_into().unwrap();
+    (i, j)
+}
+
+fn convert_to_usize(position: (isize, isize)) -> (usize, usize) {
+    let i: usize = position.0.try_into().unwrap();
+    let j: usize = position.1.try_into().unwrap();
+    (i, j)
+}
+
+fn apply_delta(position: (usize, usize), delta: (isize, isize)) -> (isize, isize) {
+    let (i, j) = convert_to_isize(position);
+    (i + delta.0, j + delta.1)
+}
+
+struct Guard {
+    position: (usize, usize),
+    direction: Direction,
+    already_visited: HashSet<(usize, usize)>,
+}
+
+struct Board {
+    obstacles: HashSet<(usize, usize)>,
+    len_x: usize,
+    len_y: usize,
+}
+
+impl Guard {
+    fn new(i: usize, j: usize) -> Guard {
+        Guard {
+            position: (i, j),
+            direction: Direction::South,
+            already_visited: HashSet::new(),
+        }
+    }
+    fn turn_right(&mut self) {
+        self.direction = match self.direction {
+            Direction::North => Direction::West,
+            Direction::East => Direction::North,
+            Direction::South => Direction::East,
+            Direction::West => Direction::South,
+        };
+    }
+    fn visit(&mut self, position: (usize, usize)) {
+        self.position = position;
+        self.already_visited.insert(position);
+    }
+}
+
+impl Board {
+    fn new(len_x: usize, len_y: usize) -> Board {
+        Board {
+            obstacles: HashSet::new(),
+            len_x,
+            len_y,
+        }
+    }
+}
+
+fn is_bounded_in_board(position: (isize, isize), board: &Board) -> bool {
+    let (i, j) = position;
+    i >= 0 && i < board.len_x.try_into().unwrap()
+        && j >= 0 && j < board.len_y.try_into().unwrap()
+}
+
+fn walk(guard: & mut Guard, board: Board) {
+    loop {
+        let new_position = apply_delta(guard.position, get_delta(& guard.direction));
+        if ! is_bounded_in_board(new_position, &board) {
+            break;
+        }
+        let new_position = convert_to_usize(new_position);
+        if board.obstacles.contains(&new_position) {
+            guard.turn_right();
+        }
+        else {
+            guard.visit(new_position);
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn day6_part1() -> usize {
+    let filename = "inputs/day6.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let char_matrix: Vec<Vec<char>> = contents
+        .lines()
+        .map(|line| line.chars().collect())
+        .collect();
+    let mut board: Board = Board::new(char_matrix[0].len(), char_matrix.len());
+    let mut guard: Guard = Guard::new(0, 0);
+    for i in 0..char_matrix.len() {
+        for j in 0..char_matrix[i].len() {
+            if char_matrix[i][j] == '#' {
+                board.obstacles.insert((j, i));
+            }
+            else if char_matrix[i][j] == '^' {
+                guard.visit((j, i));
+            }
+        }
+    }
+    walk(& mut guard, board);
+    guard.already_visited.len()
+}
+
 fn main() {
-    let result = day5_part1();
+    let result = day6_part1();
     println!("result={result}");
 }
