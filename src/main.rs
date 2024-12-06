@@ -512,6 +512,7 @@ fn day5_part2() -> usize {
         .sum()
 }
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum Direction {
     North,
     East,
@@ -545,10 +546,14 @@ fn apply_delta(position: (usize, usize), delta: (isize, isize)) -> (isize, isize
     (i + delta.0, j + delta.1)
 }
 
+#[derive(Clone)]
 struct Guard {
     position: (usize, usize),
     direction: Direction,
     already_visited: HashSet<(usize, usize)>,
+    transitions: HashSet<((usize, usize), (usize, usize))>,
+    obstacles_added: HashSet<(usize, usize)>,
+    tried_adding_obstacle: HashSet<(usize, usize)>,
 }
 
 struct Board {
@@ -563,6 +568,9 @@ impl Guard {
             position: (i, j),
             direction: Direction::South,
             already_visited: HashSet::new(),
+            transitions: HashSet::new(),
+            obstacles_added: HashSet::new(),
+            tried_adding_obstacle: HashSet::new(),
         }
     }
     fn turn_right(&mut self) {
@@ -574,6 +582,7 @@ impl Guard {
         };
     }
     fn visit(&mut self, position: (usize, usize)) {
+        self.transitions.insert((self.position, position));
         self.position = position;
         self.already_visited.insert(position);
     }
@@ -595,10 +604,31 @@ fn is_bounded_in_board(position: (isize, isize), board: &Board) -> bool {
         && j >= 0 && j < board.len_y.try_into().unwrap()
 }
 
-fn walk(guard: & mut Guard, board: Board) {
+fn walk_detecting_cycle(guard: & mut Guard, board: &Board, new_obstacle: (usize, usize)) -> bool {
     loop {
         let new_position = apply_delta(guard.position, get_delta(& guard.direction));
-        if ! is_bounded_in_board(new_position, &board) {
+        if ! is_bounded_in_board(new_position, board) {
+            break;
+        }
+        let new_position = convert_to_usize(new_position);
+        if board.obstacles.contains(&new_position) || new_obstacle == new_position {
+            guard.turn_right();
+        }
+        else {
+            if guard.transitions.contains(&(guard.position, new_position)) {
+                return true;
+            }
+            guard.visit(new_position);
+        }
+    }
+    false
+}
+
+fn walk(guard: & mut Guard, board: &Board) {
+    let initial_guard = guard.clone();
+    loop {
+        let new_position = apply_delta(guard.position, get_delta(& guard.direction));
+        if ! is_bounded_in_board(new_position, board) {
             break;
         }
         let new_position = convert_to_usize(new_position);
@@ -606,6 +636,14 @@ fn walk(guard: & mut Guard, board: Board) {
             guard.turn_right();
         }
         else {
+            if ! guard.tried_adding_obstacle.contains(&new_position) {
+                guard.tried_adding_obstacle.insert(new_position);
+                let mut new_guard = initial_guard.clone();
+                let cycle = walk_detecting_cycle(& mut new_guard, board, new_position);
+                if cycle {
+                    guard.obstacles_added.insert(new_position);
+                }
+            }
             guard.visit(new_position);
         }
     }
@@ -631,11 +669,35 @@ fn day6_part1() -> usize {
             }
         }
     }
-    walk(& mut guard, board);
+    walk(& mut guard, &board);
     guard.already_visited.len()
 }
 
+#[allow(dead_code)]
+fn day6_part2() -> usize {
+    let filename = "inputs/day6.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let char_matrix: Vec<Vec<char>> = contents
+        .lines()
+        .map(|line| line.chars().collect())
+        .collect();
+    let mut board: Board = Board::new(char_matrix[0].len(), char_matrix.len());
+    let mut guard: Guard = Guard::new(0, 0);
+    for i in 0..char_matrix.len() {
+        for j in 0..char_matrix[i].len() {
+            if char_matrix[i][j] == '#' {
+                board.obstacles.insert((j, i));
+            }
+            else if char_matrix[i][j] == '^' {
+                guard.visit((j, i));
+            }
+        }
+    }
+    walk(& mut guard, &board);
+    guard.obstacles_added.len()
+}
+
 fn main() {
-    let result = day6_part1();
+    let result = day6_part2();
     println!("result={result}");
 }
