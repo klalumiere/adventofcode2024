@@ -697,7 +697,126 @@ fn day6_part2() -> usize {
     guard.obstacles_added.len()
 }
 
+#[derive(Debug)]
+struct Equation {
+    result: isize,
+    rhs: Vec<isize>,
+}
+
+#[derive(Debug)]
+enum Operation {
+    Add,
+    Multiply,
+    Concatenate,
+}
+
+impl Equation {
+    fn from(string: &str) -> Equation {
+        let parts: Vec<&str> = string.split(":").collect();
+        let result = parts[0].trim().parse().expect("Can't parse number");
+        let rhs: Vec<isize> = parts[1]
+            .split(" ")
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .map(|x| x.parse().expect("Can't parse number"))
+            .collect();
+        Equation { result, rhs }
+    }
+    fn peek_last_term(&self) -> isize {
+        *self.rhs.last().expect("expected rhs not to be empty")
+    }
+    fn copy_terms_except_last(&self) -> Vec<isize> {
+        let mut result = self.rhs.clone();
+        result.pop();
+        result
+    }
+}
+
+fn can_concatenate(result: isize, rhs: isize) -> bool {
+    let mut result = result;
+    let mut rhs = rhs;
+    while rhs > 0 && result > 0 {
+        if result % 10 != rhs % 10 {
+            return false;
+        }
+        result /= 10;
+        rhs /= 10;
+    }
+    true
+}
+
+fn remove_suffix(result: isize, suffix: isize) -> isize {
+    let mut result = result;
+    let mut suffix = suffix;
+    while suffix > 0 && result > 0 {
+        result /= 10;
+        suffix /= 10;
+    }
+    result
+}
+
+fn is_equation_satisfied(equation: &Equation, operations: & mut Vec<Operation>) -> bool { // possible stack overflow alert!
+    if equation.rhs.len() == 1 {
+        return equation.result == *equation.rhs.last().unwrap();
+    }
+    let mut satisfied = false;
+    let last_term = equation.peek_last_term();
+    if equation.result % last_term == 0 {
+        let equation_divided = Equation {
+            result: equation.result / last_term,
+            rhs: equation.copy_terms_except_last(),
+        };
+        satisfied |= is_equation_satisfied(&equation_divided, operations);
+        if satisfied {
+            operations.push(Operation::Multiply);
+        }
+    }
+    if !satisfied && can_concatenate(equation.result, last_term) {
+        let equation_concatenate = Equation {
+            result: remove_suffix(equation.result, last_term),
+            rhs: equation.copy_terms_except_last(),
+        };
+        satisfied |= is_equation_satisfied(&equation_concatenate, operations);
+        if satisfied {
+            operations.push(Operation::Concatenate);
+        }
+    }
+    if !satisfied && equation.result - last_term >= 0 {
+        let equation_minus = Equation {
+            result: equation.result - last_term,
+            rhs: equation.copy_terms_except_last(),
+        };
+        satisfied |= is_equation_satisfied(&equation_minus, operations);
+        if satisfied {
+            operations.push(Operation::Add);
+        }
+    }
+    satisfied
+}
+
+#[allow(dead_code)]
+fn day7_part2() -> isize {
+    let filename = "inputs/day7.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let mut operations: Vec<Vec<Operation>> = Vec::new();
+    let sum = contents
+        .lines()
+        .map(Equation::from)
+        .filter(|equation| {
+            let mut operation: Vec<Operation> = Vec::new();
+            let result = is_equation_satisfied(equation, & mut operation);
+            if result {
+                operation.reverse();
+                operations.push(operation);
+            }
+            result
+        })
+        .map(|equation| equation.result).sum();
+    // dbg!(operations);
+    sum
+}
+
 fn main() {
-    let result = day6_part2();
+    let result = day7_part2();
     println!("result={result}");
 }
