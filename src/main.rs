@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, fs};
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct Point {
     x: isize,
     y: isize,
@@ -54,7 +54,7 @@ impl Board {
 
 fn find_antinodes(board: &Board) -> HashSet<Point> {
     let mut antinodes = HashSet::new();
-    for (_, points) in &board.antennas {
+    for points in board.antennas.values() {
         for p0 in points {
             for p in points {
                 if p0 == p {
@@ -64,6 +64,32 @@ fn find_antinodes(board: &Board) -> HashSet<Point> {
                 if antinode_position.is_bounded(board) {
                     antinodes.insert(antinode_position);
                 }
+            }
+        }
+    }
+    antinodes
+}
+
+fn find_antinodes_part_2(board: &Board) -> HashSet<Point> {
+    let mut antinodes: HashSet<Point>  = HashSet::new();
+    for points in board.antennas.values() {
+        for p0 in points {
+            for p in points {
+                if p0 == p {
+                    continue;
+                }
+                antinodes.insert(*p);
+                let delta = p0.subtract(p);
+                let mut antinode_position = p0.add(&delta);
+                loop {
+                    if antinode_position.is_bounded(board) {
+                        antinodes.insert(antinode_position);
+                        antinode_position = antinode_position.add(&delta);
+                    } else {
+                        break;
+                    }
+                }
+                
             }
         }
     }
@@ -82,19 +108,19 @@ fn day8_part1() -> usize {
     find_antinodes(&board).len()
 }
 
-// #[allow(dead_code)]
-// fn day8_part2() -> usize {
-//     let filename = "inputs/day8.txt";
-//     let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
-//     let char_matrix: Vec<Vec<char>> = contents
-//         .lines()
-//         .map(|line| line.chars().collect())
-//         .collect();
-//     let board = Board::from(&char_matrix);
-//     find_antinodes(&board).len()
-// }
+#[allow(dead_code)]
+fn day8_part2() -> usize {
+    let filename = "inputs/day8.txt";
+    let contents = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let char_matrix: Vec<Vec<char>> = contents
+        .lines()
+        .map(|line| line.chars().collect())
+        .collect();
+    let board = Board::from(&char_matrix);
+    find_antinodes_part_2(&board).len()
+}
 
 fn main() {
-    let result = day8_part1();
+    let result = day8_part2();
     println!("result={result}");
 }
