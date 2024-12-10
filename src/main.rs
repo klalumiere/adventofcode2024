@@ -123,7 +123,21 @@ fn day10_part1() -> usize {
         .len()
 }
 
+#[allow(dead_code)]
+fn day10_part2() -> usize {
+    let filename = "inputs/day10.txt";
+    let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let board = Board::from(&content);
+    let paths = find_path(&board);
+    paths.iter()
+        .filter(|trailhead| {
+            assert!(trailhead.steps.len() <= 10);
+            trailhead.steps.len() == 10
+        })
+        .count()
+}
+
 fn main() {
-    let result = day10_part1();
+    let result = day10_part2();
     println!("result={result}");
 }
