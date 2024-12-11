@@ -1,6 +1,6 @@
-use std::fs;
+use std::{collections::HashMap, fs};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, std::hash::Hash)]
 struct Stone {
     value: usize
 }
@@ -39,6 +39,7 @@ impl Stone {
     }
 }
 
+#[allow(dead_code)]
 fn blink_many_times(stones: &[Stone], times_to_blink: usize) -> Vec<Stone> {
     let mut stones = stones.to_vec();
     for _ in 0..times_to_blink {
@@ -51,6 +52,23 @@ fn blink_many_times(stones: &[Stone], times_to_blink: usize) -> Vec<Stone> {
     stones
 }
 
+fn count_stones_after_blink(stone: Stone, blink: usize, max_blink: usize, cache: & mut HashMap<(Stone, usize), usize>) -> usize {
+    if let Some(&cached_result) = cache.get(&(stone, blink)) {
+        return cached_result;
+    }
+    let mut result: usize = 0;
+    if blink < max_blink {
+        let stones = stone.blink();
+        for stone in stones {
+            result += count_stones_after_blink(stone, blink + 1, max_blink, cache);
+        }
+    } else {
+        result = 1usize;
+    }
+    cache.insert((stone, blink), result);
+    result
+}
+
 pub fn run() -> usize {
     let filename = "inputs/day11.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
@@ -59,12 +77,14 @@ pub fn run() -> usize {
         .map(Stone::new)
         .collect();
     let mut total_count = 0usize;
+    let mut cache: HashMap<(Stone, usize), usize> = HashMap::new();
     for stone in stones {
-        total_count += blink_many_times(&[stone], 25).len();
-        println!("stone={:?}, total_count={total_count}", stone);
+        total_count += count_stones_after_blink(stone, 0, 25, & mut cache);
     }
     total_count
 }
+
+
 
 #[cfg(test)]
 mod tests {
