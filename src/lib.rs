@@ -79,7 +79,7 @@ pub fn run() -> usize {
     let mut total_count = 0usize;
     let mut cache: HashMap<(Stone, usize), usize> = HashMap::new();
     for stone in stones {
-        total_count += count_stones_after_blink(stone, 0, 25, & mut cache);
+        total_count += count_stones_after_blink(stone, 0, 75, & mut cache);
     }
     total_count
 }
