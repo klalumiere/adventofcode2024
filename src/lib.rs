@@ -2,6 +2,10 @@ use std::collections::HashSet;
 use std::fs;
 use std::cmp::max;
 use std::cmp::min;
+use good_lp::{constraint, default_solver, Solution, SolverModel, variables};
+
+
+
 
 use regex::Regex;
 
@@ -113,6 +117,43 @@ fn generate_solutions_for_system(system: &SystemOfEquation, max_solution: isize)
     solutions
 }
 
+fn generate_solutions_for_system_part2(system: &SystemOfEquation, price_a: isize, price_b: isize) -> Vec<(isize, isize)> {
+    let SystemOfEquation { equation_x, equation_y } = system;
+    let equation_x = Equation { d: 10000000000000 + equation_x.d, ..*equation_x};
+    let equation_y = Equation { d: 10000000000000 + equation_y.d, ..*equation_y};
+    let price_a = price_a as f64;
+    let price_b = price_b as f64;
+    let ax = equation_x.a as f64;
+    let bx = equation_x.b as f64;
+    let dx = equation_x.d as f64;
+    let ay = equation_y.a as f64;
+    let by = equation_y.b as f64;
+    let dy = equation_y.d as f64;
+
+    variables! {
+        vars:
+            a >= 0;
+            b >= 0;
+    }
+    let solution = vars.minimise(a * price_a + b * price_b)
+        .using(default_solver) // multiple solvers available
+        .with(constraint!(a*ax + b*bx == dx))
+        .with(constraint!(a*ay + b*by == dy))
+        .solve();
+    let mut solutions_int: Vec<(isize, isize)> = Vec::new();
+    if let Ok(solution) = solution {
+        let potential_a = (solution.value(a) + 0.5) as isize;
+        let potential_b = (solution.value(b) + 0.5) as isize;
+        if (equation_x.a*potential_a + equation_x.b*potential_b) == equation_x.d &&
+            (equation_y.a*potential_a + equation_y.b*potential_b) == equation_y.d
+        {
+            solutions_int.push((potential_a, potential_b));
+        }
+    }
+    solutions_int
+}
+
+
 fn get_solution_price(solution: (isize, isize), price_a: isize, price_b: isize) -> isize {
     let (a, b) = solution;
     a * price_a + b * price_b
@@ -126,7 +167,7 @@ pub fn run() -> isize {
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
     let systems_of_equations = parse_equations(&content);
     systems_of_equations.iter()
-        .map(|system| generate_solutions_for_system(system, MAX_SOLUTION))
+        .map(|system| generate_solutions_for_system_part2(system, PRICE_A, PRICE_B))
         .map(|solutions| solutions.iter().map(|solution| get_solution_price(*solution, PRICE_A, PRICE_B)).min().unwrap_or(0isize))
         .sum()
 }
