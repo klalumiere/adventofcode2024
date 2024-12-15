@@ -68,6 +68,16 @@ impl BoardSize {
         }
         quadrants_to_count
     }
+
+    fn print_robots(&self, robots: &[Robot]) {
+        let mut board = vec![vec![' '; self.size_x as usize]; self.size_y as usize];
+        for robot in robots {
+            board[robot.position.y as usize][robot.position.x as usize] = 'x';
+        }
+        for row in board {
+            println!("{}", row.iter().collect::<String>());
+        }
+    }
 }
 
 impl Position {
@@ -130,11 +140,26 @@ fn parse_robots(content: &str) -> Vec<Robot> {
 
 pub fn run() -> usize {
     const T: isize = 100;
-    const BOARD_SIZE: BoardSize = BoardSize::new(11, 7);
+    const BOARD_SIZE: BoardSize = BoardSize::new(101, 103);
     let filename = "inputs/day14.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
     let robots = parse_robots(&content);
     let evolved_robots: Vec<Robot> = robots.iter().map(|robot| evolve_robot(*robot, T, BOARD_SIZE)).collect();
+    
+    let robot_count = robots.len() as f64;
+    for t in 1000..10000 {
+        let evolved_robots: Vec<Robot> = robots.iter().map(|robot| evolve_robot(*robot, t, BOARD_SIZE)).collect();
+        let robot_count_by_quadrant = BOARD_SIZE.get_robot_count_by_quadrant(&evolved_robots);
+        let bottom_left = robot_count_by_quadrant.get(&Quadrant::BottomLeft).unwrap_or(&0);
+        let bottom_right = robot_count_by_quadrant.get(&Quadrant::BottomRight).unwrap_or(&0);
+        let bottom = (bottom_left + bottom_right) as f64;
+        if bottom / robot_count > 0.7 {
+            println!("t={t}");
+            BOARD_SIZE.print_robots(&evolved_robots);
+            print!("\n\n\n\n\n\n\n\n");
+        }
+    }
+
     BOARD_SIZE.get_robot_count_by_quadrant(&evolved_robots)
         .iter()
         .filter(|(quadrant, _)| **quadrant != Quadrant::Center)
