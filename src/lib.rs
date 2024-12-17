@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, fs};
+use std::{collections::{HashMap, HashSet, VecDeque}, fs};
 
 const COST_TO_STEP: usize = 1;
 const COST_TO_TURN: usize = 1000;
@@ -210,8 +210,10 @@ pub fn run() -> usize {
     let reindeer = Reindeer::new(labyrinth.start);
     let reindeer_at_the_end: Vec<Reindeer> = solve_labyrinth(&reindeer, &labyrinth);
     let min_socre = reindeer_at_the_end.iter().map(Reindeer::score_moves).min().unwrap();
-    min_socre
-    // reindeer_at_the_end.iter().find(|r| r.score_moves() == min_socre).unwrap().history.len()
+    let tiles_visited: HashSet<(isize, isize)> = HashSet::from_iter(reindeer_at_the_end.iter()
+        .filter(|r| r.score_moves() == min_socre)
+        .flat_map(|r| r.history.clone()));
+    tiles_visited.len()
 }
 
 
