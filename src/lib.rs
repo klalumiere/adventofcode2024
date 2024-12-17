@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, thread::{self, JoinHandle}};
 
 use regex::Regex;
 
@@ -39,6 +39,19 @@ impl Instruction {
             6 => Instruction::Bdv(operand),
             7 => Instruction::Cdv(operand),
             _ => panic!("Unknown opcode: {opcode}"),
+        }
+    }
+
+    fn convert_to_opcode(&self) -> (usize, usize) {
+        match self {
+            Instruction::Adv(operand) => (0usize, *operand),
+            Instruction::Bxl(operand) => (1usize, *operand),
+            Instruction::Bst(operand) => (2usize, *operand),
+            Instruction::Jnz(operand) => (3usize, *operand),
+            Instruction::Bxc(operand) => (4usize, *operand),
+            Instruction::Out(operand) => (5usize, *operand),
+            Instruction::Bdv(operand) => (6usize, *operand),
+            Instruction::Cdv(operand) => (7usize, *operand),
         }
     }
 
@@ -117,6 +130,16 @@ impl Program {
         }
         Program { instructions }
     }
+
+    fn convert_to_opcodes(&self) -> Vec<usize> {
+        let mut opcodes: Vec<usize> = Vec::new();
+        for instruction in &self.instructions {
+            let (opcode, operand) = instruction.convert_to_opcode();
+            opcodes.push(opcode);
+            opcodes.push(operand);
+        }
+        opcodes
+    }
 }
 
 impl Computer {
@@ -150,6 +173,7 @@ impl Computer {
         instruction.run(self, stdout)
     }
 
+    #[allow(dead_code)]
     fn run(& mut self, program: &Program) -> Vec<usize> {
         let mut stdout: Vec<usize> = Vec::new();
         if program.instructions.is_empty(){
@@ -163,6 +187,60 @@ impl Computer {
         }
         stdout
     }
+
+    fn copy_program_once(& mut self, program: &Program) -> Option<usize> {
+        let initial_register_a = self.register_a;
+        let target_opcodes = program.convert_to_opcodes();
+        let mut stdout: Vec<usize> = Vec::new();
+        let last_valid_index_mod2 = 2*(program.instructions.len() - 1);
+        while self.instruction_pointer <= last_valid_index_mod2 {
+            assert!(self.instruction_pointer % 2 == 0);
+            let instruction = program.instructions[self.instruction_pointer / 2usize];
+            self.run_instruction(instruction, &mut stdout);
+            for (target, actual) in stdout.iter().zip(&target_opcodes) {
+                if target != actual {
+                    return None;
+                }
+            }
+            if stdout.len() > target_opcodes.len() {
+                return None
+            }
+        }
+        if stdout.len() == target_opcodes.len() {
+            return Some(initial_register_a);
+        }
+        None
+    }
+
+    fn copy_program(&self, program: &Program) -> Option<isize> {
+        let mut handles: Vec<JoinHandle<Option<isize>>> = vec![];
+        for i in 1..10 {
+            let computer = *self;
+            let program = program.clone();
+            let handle = thread::spawn(move || {
+                for j in (i*10000000000usize)..((i+1)*10000000000usize) {
+                    if j % 10000000 == 0 {
+                        println!("Trying with register_a={j}");
+                    }
+                    let mut new_computer = Computer { register_a: j, ..computer };
+                    if let Some(register_a) = new_computer.copy_program_once(&program) {
+                        println!("YOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO I FOOOOOOOOOOUND A SOLUTIONNNNNNNNNNNNNNNNNNNNNNNNN {register_a}");
+                        return Some(register_a as isize);
+                    }
+                }
+                None
+            });
+            handles.push(handle);
+        }
+        let mut result: Option<isize> = None;
+        for handle in handles {
+            if let Some(register_a) = handle.join().unwrap() {
+                result = Some(register_a);
+                println!("Found a solution {register_a}");
+            }
+        }
+        result
+    }
 }
 
 fn parse_program(content: &str) -> Program {
@@ -175,13 +253,12 @@ fn parse_program(content: &str) -> Program {
     program.expect("a program")
 }
 
-pub fn run() -> String {
+pub fn run() -> isize {
     let filename = "inputs/day17.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
-    let mut computer = Computer::from(&content);
+    let computer = Computer::from(&content);
     let program = parse_program(&content);
-    let output = computer.run(&program);
-    output.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(",")
+    computer.copy_program(&program).unwrap_or(-1isize)
 }
 
 
