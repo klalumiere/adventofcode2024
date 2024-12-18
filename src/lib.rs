@@ -255,33 +255,46 @@ fn parse_program(content: &str) -> Program {
 
 fn run_decompiled_program() -> Vec<usize> {
     let mut stdout: Vec<usize> = Vec::new();
-    let mut register_a = 45483412usize;
-    let mut register_b = 0usize;
-    let mut register_c = 0usize;
-    loop {
-        register_b = register_a % 8;
-        register_b ^= 3;
-        register_c = register_a / 2usize.pow(register_b as u32);
+    // let mut register_a = 45483412usize;
+    let mut register_a: usize = 236581108670061;
+    while register_a > 0 {
+        stdout.push(get_value(register_a));
         register_a /= 8;
-        register_b ^= register_c;
-        register_b ^= 5;
-        stdout.push(register_b % 8);
-        if register_a == 0 {
-            break;
-        }
     }
     stdout
 }
 
-pub fn run() -> String {
+fn get_value(register_a: usize) -> usize {
+    let three_first_bits: usize = register_a & 7;
+    let register_c = (register_a / 2usize.pow((three_first_bits ^ 3) as u32)) & 7;
+    6 ^ three_first_bits ^ register_c
+}
+
+fn get_target_values(register_a: usize, target_values: &[usize]) -> Option<usize> {
+    if let Some(target_value) = target_values.last() {
+        for i in 0..8 {
+            let register_a_try = register_a + i;
+            if get_value(register_a_try) == *target_value {
+                if let Some(result) = get_target_values(register_a_try * 8, &target_values[0..target_values.len() - 1]) {
+                    return Some(result);
+                }
+            }
+        }
+        return None
+    }
+    Some(register_a/8)
+}
+
+pub fn run() -> usize {
     let filename = "inputs/day17.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
     let computer = Computer::from(&content);
     let program = parse_program(&content);
-    dbg!(&program);
     let output = run_decompiled_program();
-    output.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(",")
+    println!("{}", output.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","));
     // computer.copy_program(&program).unwrap_or(-1isize)
+    let target = vec![2,4,1,3,7,5,0,3,4,1,1,5,5,5,3,0];
+    get_target_values(0, &target).expect("a number")
 }
 
 
