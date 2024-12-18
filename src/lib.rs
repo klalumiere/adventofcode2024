@@ -21,7 +21,7 @@ impl Corruptions {
         for (i, line) in content.lines().enumerate() {
             let coordinates = Regex::new(r"(\d+),(\d+)").unwrap();
             let x = coordinates.captures(line).unwrap()[1].parse::<isize>().expect("a number");
-            let y = coordinates.captures(line).unwrap()[1].parse::<isize>().expect("a number");
+            let y = coordinates.captures(line).unwrap()[2].parse::<isize>().expect("a number");
             position_to_time.insert((x, y), i as isize);
         }
 
@@ -34,13 +34,13 @@ impl Position {
         Position { x, y, t }
     }
 
-    fn successors(&self, corruptions: &Corruptions, x_size: isize, y_size: isize) -> Vec<(Position, usize)> {
+    fn successors(&self, corruptions: &Corruptions, x_size: isize, y_size: isize, fixed_time: isize) -> Vec<(Position, usize)> {
         let &Position { x, y, t } = self;
         let possibilities = vec![
-            Position::new(x, y - 1, t + 1),
-            Position::new(x, y + 1, t + 1),
-            Position::new(x - 1, y, t + 1),
-            Position::new(x + 1, y, t + 1)];
+            Position::new(x, y - 1, fixed_time),
+            Position::new(x, y + 1, fixed_time),
+            Position::new(x - 1, y, fixed_time),
+            Position::new(x + 1, y, fixed_time)];
         possibilities.into_iter()
             .filter(|p| p.x >= 0 && p.y >= 0)
             .filter(|p| p.x < x_size && p.y < y_size)
@@ -56,17 +56,43 @@ impl Position {
       }
 }
 
-pub fn run() -> usize {
-    const MAP_SIZE: isize = 6;
-    const GOAL: Position = Position::new(5, 5, 0);
+pub fn run() -> (isize, isize) {
     let filename = "inputs/day18.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
     let corruptions = Corruptions::from(&content);
-    let result = dijkstra(&Position::new(0, 0, 0),
-        |p| p.successors(&corruptions, MAP_SIZE, MAP_SIZE),
-        |p| p.x == GOAL.x && p.y == GOAL.y);
-    println!("result={:?}", result.expect("no path found"));
-    0
+
+    const MAP_SIZE: isize = 71; // 7
+    const FIRST_TIME: isize = 1024; // 12;
+    const GOAL: Position = Position::new(70, 70, 0); // 6, 6
+    let last_time = corruptions.position_to_time.len() as isize;
+
+    let mut bottom = FIRST_TIME;
+    let mut top = last_time;
+    let mut mid_time = (top + bottom)/2;
+    let mut result_time: isize = 0;
+    loop {
+        let result = dijkstra(&Position::new(0, 0, mid_time),
+            |p| p.successors(&corruptions, MAP_SIZE, MAP_SIZE, mid_time),
+            |p| p.x == GOAL.x && p.y == GOAL.y);
+        let previous_mid_time = mid_time;
+        if result.is_some() {
+            println!("There's a result for mid_time={mid_time}");
+            bottom = mid_time;
+            mid_time = (top + mid_time) / 2;
+        } else {
+            println!("No result for mid_time={mid_time}");
+            top = mid_time;
+            result_time = mid_time;
+            mid_time = (mid_time + bottom) / 2;
+        }
+        if mid_time == previous_mid_time {
+            break;
+        }
+    }
+    corruptions.position_to_time.iter()
+        .filter(|((_, _), &t)| t == result_time)
+        .map(|((x, y), _)| (*x, *y))
+        .next().expect("a point")
 }
 
 
@@ -80,3 +106,6 @@ pub fn run() -> usize {
 //         assert_eq!(1, 1);
 //     }
 // }
+
+
+
