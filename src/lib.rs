@@ -253,12 +253,35 @@ fn parse_program(content: &str) -> Program {
     program.expect("a program")
 }
 
-pub fn run() -> isize {
+fn run_decompiled_program() -> Vec<usize> {
+    let mut stdout: Vec<usize> = Vec::new();
+    let mut register_a = 45483412usize;
+    let mut register_b = 0usize;
+    let mut register_c = 0usize;
+    loop {
+        register_b = register_a % 8;
+        register_b ^= 3;
+        register_c = register_a / 2usize.pow(register_b as u32);
+        register_a /= 8;
+        register_b ^= register_c;
+        register_b ^= 5;
+        stdout.push(register_b % 8);
+        if register_a == 0 {
+            break;
+        }
+    }
+    stdout
+}
+
+pub fn run() -> String {
     let filename = "inputs/day17.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
     let computer = Computer::from(&content);
     let program = parse_program(&content);
-    computer.copy_program(&program).unwrap_or(-1isize)
+    dbg!(&program);
+    let output = run_decompiled_program();
+    output.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(",")
+    // computer.copy_program(&program).unwrap_or(-1isize)
 }
 
 
