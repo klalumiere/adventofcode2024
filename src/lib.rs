@@ -61,13 +61,43 @@ fn find_towels(word: &str, letter_to_towels: &HashMap<char, Vec<String>>, cache:
     }
 }
 
+fn count_possible_towels_arrangement(word: &str, letter_to_towels: &HashMap<char, Vec<String>>, cache: & mut HashMap<String, usize>) -> usize {
+    if word.is_empty() {
+        return 1;
+    }
+    if cache.contains_key(word) {
+        return *cache.get(word).unwrap();
+    }
+
+    let next_letter = word.chars().next().expect("a first letter");
+    let available_towels = letter_to_towels.get(&next_letter);
+    match available_towels {
+        None => {
+            cache.insert(String::from(word), 0);
+            0
+        },
+        Some(towels) => {
+            let mut count = 0;
+            for towel in towels {
+                if word.starts_with(towel) {
+                    count += count_possible_towels_arrangement(&word[towel.len()..], letter_to_towels, cache);
+                }
+            }
+            cache.insert(String::from(word), count);
+            count
+        }
+    }
+}
+
 pub fn run() -> usize {
     let filename = "inputs/day19.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
     let letter_to_towels = parse_letter_to_towels(&content);
     let patterns = parse_patterns(&content);
-    let mut cache: HashMap<String, Option<Vec<String>>> = HashMap::new();
-    patterns.iter().map(|pattern| find_towels(pattern, &letter_to_towels, & mut cache)).filter(|x| x.is_some()).count()
+    let mut cache_find: HashMap<String, Option<Vec<String>>> = HashMap::new();
+    let mut cache_count: HashMap<String, usize> = HashMap::new();
+    let possible_patterns: Vec<String> = patterns.iter().filter(|pattern| find_towels(pattern, &letter_to_towels, & mut cache_find).is_some()).cloned().collect();
+    possible_patterns.iter().map(|pattern| count_possible_towels_arrangement(pattern, &letter_to_towels, & mut cache_count)).sum()
 }
 
 
