@@ -1,116 +1,193 @@
-use std::{collections::HashMap, fs};
+use std::{collections::{HashSet, VecDeque}, fs};
 
-fn parse_letter_to_towels(content: &str) -> HashMap<char, Vec<String>> {
-    let mut letter_to_towels: HashMap<char, Vec<String>> = HashMap::new();
-    for line in content.lines() {
-        if line.is_empty() {
-            break;
-        }
-        for towel in line.split(", ") {
-            let first_letter = towel.chars().next().expect("a first letter");
-            let letter_to_towels = letter_to_towels.entry(first_letter).or_insert_with(Vec::new);
-            letter_to_towels.push(String::from(towel));
-        }
-    }
-    letter_to_towels
+const END: char = 'E';
+const NOTHING: char = '.';
+const START: char = 'S';
+const WALL: char = '#';
+
+#[derive(Clone, Debug)]
+struct Labyrinth {
+    terrain: Vec<Vec<char>>,
+    start: (isize, isize),
+    end: (isize, isize),
 }
 
-fn parse_patterns(content: &str) -> Vec<String> {
-    let mut lines = content.lines();
-    for line in lines.by_ref() {
-        if line.is_empty() {
-            break;
-        }
-    }
-    lines.map(String::from).collect()
-}
-
-fn find_towels(word: &str, letter_to_towels: &HashMap<char, Vec<String>>, cache: & mut HashMap<String, Option<Vec<String>>>) -> Option<Vec<String>> {
-    if word.is_empty() {
-        return Some(Vec::new());
-    }
-    if cache.contains_key(word) {
-        return cache.get(word).unwrap().clone();
-    }
+impl Labyrinth {
+    fn from(content: &str) -> Labyrinth {
+        const INITIAL_POSITION: (isize, isize) = (-1, -1);
+        let mut terrain: Vec<Vec<char>> = Vec::new();
+        let mut start = INITIAL_POSITION;
+        let mut end = INITIAL_POSITION;
     
-    let next_letter = word.chars().next().expect("a first letter");
-    let available_towels = letter_to_towels.get(&next_letter);
-    match available_towels {
-        None => {
-            cache.insert(String::from(word), None);
-            None
-        },
-        Some(towels) => {
-            let mut solution = Vec::new();
-            for towel in towels {
-                if word.starts_with(towel) {
-                    solution.push(towel.clone());
-                    match find_towels(&word[towel.len()..], letter_to_towels, cache) {
-                        None => continue,
-                        Some(new_towels) => {
-                            solution.extend(new_towels);
-                            cache.insert(String::from(word), Some(solution.clone()));
-                            return Some(solution);
-                        }
+        let mut lines = content.lines();
+        for (y, line) in lines.by_ref().enumerate() {
+            if line.is_empty() {
+                break;
+            }
+            let mut row = Vec::new();
+            for (x, c) in line.chars().enumerate() {
+                match c {
+                    START => {
+                        start = (x as isize, y as isize);
+                        row.push(NOTHING);
+                    }
+                    END => {
+                        end = (x as isize, y as isize);
+                        row.push(NOTHING);
+                    } 
+                    _ => {
+                        row.push(c);
                     }
                 }
             }
-            cache.insert(String::from(word), None);
-            None
+            terrain.push(row);
         }
+        assert_ne!(end, INITIAL_POSITION);
+        assert_ne!(start, INITIAL_POSITION);
+    
+        Labyrinth { terrain, start, end }
+    }
+
+    fn get_legal_positions_around(&self, position: (isize, isize)) -> Vec<(isize, isize)> {
+        let (x, y) = position;
+        [(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)].iter()
+            .copied()
+            .filter(|&(x,y)| x >= 0 && y >= 0)
+            .filter(|&(x,y)| x < self.terrain[0].len() as isize && y < self.terrain.len() as isize)
+            .filter(|&(x,y)| self.terrain[y as usize][x as usize] != WALL)
+            .collect()
+    }
+
+    fn is_shortcut(&self, position: (isize, isize)) -> bool {
+        let (x, y) = position;
+        self.terrain[y as usize][x as usize] == WALL
+            && self.get_legal_positions_around(position).len() > 1
     }
 }
 
-fn count_possible_towels_arrangement(word: &str, letter_to_towels: &HashMap<char, Vec<String>>, cache: & mut HashMap<String, usize>) -> usize {
-    if word.is_empty() {
-        return 1;
-    }
-    if cache.contains_key(word) {
-        return *cache.get(word).unwrap();
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq, std::hash::Hash)]
+struct ReindeerState {
+    position: (isize, isize),
+}
 
-    let next_letter = word.chars().next().expect("a first letter");
-    let available_towels = letter_to_towels.get(&next_letter);
-    match available_towels {
-        None => {
-            cache.insert(String::from(word), 0);
-            0
-        },
-        Some(towels) => {
-            let mut count = 0;
-            for towel in towels {
-                if word.starts_with(towel) {
-                    count += count_possible_towels_arrangement(&word[towel.len()..], letter_to_towels, cache);
-                }
-            }
-            cache.insert(String::from(word), count);
-            count
-        }
+#[derive(Clone, Debug, Eq, PartialEq, std::hash::Hash)]
+struct Reindeer {
+    state: ReindeerState,
+    step_taken: usize
+    // history: Vec<ReindeerState>,
+}
+
+impl ReindeerState {
+    fn new(position: (isize, isize)) -> Self {
+        ReindeerState { position }
     }
 }
 
-pub fn run() -> usize {
-    let filename = "inputs/day19.txt";
-    let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
-    let letter_to_towels = parse_letter_to_towels(&content);
-    let patterns = parse_patterns(&content);
-    let mut cache_find: HashMap<String, Option<Vec<String>>> = HashMap::new();
-    let mut cache_count: HashMap<String, usize> = HashMap::new();
-    let possible_patterns: Vec<String> = patterns.iter().filter(|pattern| find_towels(pattern, &letter_to_towels, & mut cache_find).is_some()).cloned().collect();
-    possible_patterns.iter().map(|pattern| count_possible_towels_arrangement(pattern, &letter_to_towels, & mut cache_count)).sum()
+impl Reindeer {
+    fn new(position: (isize, isize)) -> Self {
+        let state = ReindeerState::new(position);
+        // let history: Vec<ReindeerState> = vec![state];
+        Reindeer { state, step_taken: 0 }
+    }
+
+    fn clone_with_state(&self, state: ReindeerState) -> Self {
+        let mut clone = self.clone();
+        clone.state = state;
+        clone.step_taken += 1;
+        // clone.history.push(state);
+        clone
+    }
 }
 
+// fn solve_labyrinth(reindeer: &Reindeer, labyrinth: &Labyrinth) -> Vec<Reindeer> {
+//     let mut reindeer_at_the_end: Vec<Reindeer> = Vec::new();
+//     let mut visited: HashSet<ReindeerState> = HashSet::new();
+//     let mut to_visit: VecDeque<Reindeer> = VecDeque::new();
+//     to_visit.push_back(reindeer.clone());
 
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn test_step_forward() {
-//         assert_eq!(1, 1);
+//     while let Some(reindeer) = to_visit.pop_front() {
+//         if reindeer.state.position == labyrinth.end {
+//             reindeer_at_the_end.push(reindeer);
+//             continue;
+//         }
+    
+//         for new_position in labyrinth.get_legal_positions_around(reindeer.state.position) {
+//             let new_state = ReindeerState::new(new_position);
+//             if visited.contains(&new_state) {
+//                 continue;
+//             } else {
+//                 visited.insert(new_state);
+//             }
+//             let new_reindeer = reindeer.clone_with_state(new_state);
+//             to_visit.push_back(new_reindeer);
+//         }
 //     }
+
+//     reindeer_at_the_end
 // }
 
+fn get_labyrinth_solution_cost(reindeer: &Reindeer, labyrinth: &Labyrinth) -> usize {
+    let mut reindeer_at_the_end: Vec<Reindeer> = Vec::new();
+    let mut visited: HashSet<ReindeerState> = HashSet::new();
+    let mut to_visit: VecDeque<Reindeer> = VecDeque::new();
+    to_visit.push_back(reindeer.clone());
+
+    while let Some(reindeer) = to_visit.pop_front() {
+        if reindeer.state.position == labyrinth.end {
+            reindeer_at_the_end.push(reindeer);
+            continue;
+        }
+    
+        for new_position in labyrinth.get_legal_positions_around(reindeer.state.position) {
+            let new_state = ReindeerState::new(new_position);
+            if visited.contains(&new_state) {
+                continue;
+            } else {
+                visited.insert(new_state);
+            }
+            let new_reindeer = reindeer.clone_with_state(new_state);
+            to_visit.push_back(new_reindeer);
+        }
+    }
+
+    reindeer_at_the_end.iter().map(|x| x.step_taken ).min().expect("a path")
+}
 
 
+pub fn run() -> usize {
+    const MINIMUM_TIME_SAVED: usize = 100;
+
+    let filename = "inputs/day20.txt";
+    let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
+    let labyrinth = Labyrinth::from(&content);
+    let reindeer = Reindeer::new(labyrinth.start);
+    let len_min_path = get_labyrinth_solution_cost(&reindeer, &labyrinth);
+    let mut path_count = 0;
+    for (y, row) in labyrinth.terrain.iter().enumerate() {
+        for (x, _) in row.iter().enumerate() {
+            let position = (x as isize, y as isize);
+            if labyrinth.is_shortcut(position) {
+                println!("shortcut at position: {:?}", position);
+                let mut labyrinth_with_shortcut = labyrinth.clone();
+                labyrinth_with_shortcut.terrain[y][x] = NOTHING;
+                let len_with_shortcut = get_labyrinth_solution_cost(&reindeer, &labyrinth_with_shortcut);
+                if len_min_path - len_with_shortcut >= MINIMUM_TIME_SAVED {
+                    path_count += 1;
+                }
+            }
+        }
+    }
+    path_count
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_turn_to_face_changes_direction() {
+        assert_eq!(1,1);
+    }
+}
