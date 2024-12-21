@@ -1,6 +1,6 @@
-use std::fs;
+use std::{collections::{HashMap, HashSet}, fs};
 
-use pathfinding::prelude::{dijkstra, yen};
+use pathfinding::prelude::dijkstra;
 
 const END: char = 'E';
 const INITIAL_POSITION: (i32, i32) = (-1, -1);
@@ -69,6 +69,12 @@ struct Position {
     step_in_cheat: i32,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, std::hash::Hash)]
+struct PositionState {
+    value: (i32, i32),
+    is_cheating: bool,
+}
+
 impl Position {
     fn new (value: (i32, i32)) -> Self {
         Position {
@@ -81,6 +87,13 @@ impl Position {
         self.step_in_cheat > 0 && self.step_in_cheat < max_cheat_move
     }
 
+    fn get_position_state(&self, max_cheat_move: i32) -> PositionState {
+        PositionState {
+            value: self.value,
+            is_cheating: self.is_cheating(max_cheat_move),
+        }
+    }
+
     fn move_while_cheating(&self, new_position: (i32, i32)) -> Self {
         Position {
             value: new_position,
@@ -89,7 +102,6 @@ impl Position {
     }
 
     fn move_legally(&self, new_position: (i32, i32)) -> Self {
-        // assert!(self.step_in_cheat <= max_cheat_move);
         Position {
             value: new_position,
             step_in_cheat: self.step_in_cheat,
@@ -105,7 +117,7 @@ impl Position {
     }
 
     fn move_to_wall(&self, wall_position: (i32, i32), _: &Labyrinth, max_cheat_move: i32) -> Option<Self> {
-        if self.step_in_cheat < max_cheat_move {
+        if self.step_in_cheat + 1 < max_cheat_move {
             Some(self.move_while_cheating(wall_position))
         } else {
             None
@@ -129,6 +141,12 @@ impl Position {
             )
             .collect()
     }
+
+    fn successors_stack<'a>(&'a self, labyrinth: &'a Labyrinth, max_cheat_move: i32) -> impl Iterator<Item = Position> + 'a {
+        labyrinth.get_positions_around(self.value)
+            .filter_map(move |new_position|
+                self.move_to(new_position, labyrinth, max_cheat_move))
+    }
 }
 
 fn solve_dijkstra(labyrinth: &Labyrinth, max_cheat_move: i32) -> Option<(Vec<Position>, usize)> {
@@ -137,35 +155,58 @@ fn solve_dijkstra(labyrinth: &Labyrinth, max_cheat_move: i32) -> Option<(Vec<Pos
     dijkstra(&start, |p| p.successors(labyrinth, max_cheat_move), |p| p.value == end.value)
 }
 
-fn solve_yen(labyrinth: &Labyrinth, max_cheat_move: i32) -> Vec<(Vec<Position>, usize)> {
-    let start = Position::new(labyrinth.start);
-    let end = Position::new(labyrinth.end);
-    yen(&start, |p| p.successors(labyrinth, max_cheat_move), |p| p.value == end.value, 2000)
-}
-
-fn calculate_time_saved(original_count: usize, new_count: usize) -> i32 {
-    (original_count as i32) - (new_count as i32)
-}
-
-fn count_cheats_saving_at_least(labyrinth: & mut Labyrinth, min_time_saved: i32, max_cheat_move: i32) -> usize {
+fn count_cheats_saving_at_least(labyrinth: & Labyrinth, min_time_saved: i32, max_cheat_move: i32) -> usize {
     let (_, original_count) = solve_dijkstra(labyrinth, 0).expect("a solution");
     println!("original count {}", original_count);
-    let solutions =  solve_yen(labyrinth, max_cheat_move);
-    for solution in &solutions {
-        println!("solution {:?}", solution.1);
+    let max_cost = (original_count as i32) - min_time_saved;
+    let visited: HashSet<(i32, i32)> = HashSet::new();
+    let mut cache: HashMap<CacheKey, usize> = HashMap::new();
+    count_cheats(Position::new(labyrinth.start), labyrinth, max_cheat_move, 0, max_cost, & visited, & mut cache)
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, std::hash::Hash)]
+struct CacheKey {
+    position: PositionState,
+    actual_cost: i32,
+}
+
+fn count_cheats(start: Position, labyrinth: &Labyrinth, max_cheat_move: i32, actual_cost: i32, max_cost: i32,
+    visited: &HashSet<(i32, i32)>, cache: & mut HashMap<CacheKey, usize>) -> usize
+{
+    if start.value == labyrinth.end {
+        return 1;
     }
-    solutions.len()
+    if actual_cost >= max_cost {
+        return 0;
+    }
+    if let Some(count) = cache.get(&CacheKey { position: start.get_position_state(max_cheat_move), actual_cost }) {
+        return *count;
+    }
+
+    let mut total_count: usize = 0;
+    for successor in start.successors_stack(labyrinth, max_cheat_move) {
+        if visited.contains(&successor.value) {
+            continue;
+        }
+        let mut cloned_visited = visited.clone();
+        cloned_visited.insert(start.value);
+        let successor_count = count_cheats(successor, labyrinth, max_cheat_move, actual_cost + 1, max_cost, &cloned_visited, cache);
+        total_count += successor_count;
+    }
+
+    cache.insert(CacheKey { position: start.get_position_state(max_cheat_move), actual_cost}, total_count);
+    total_count
 }
 
 pub fn run() -> usize {
     const MAX_CHEAT_MOVE: i32 = 2;
-    const MINIMUM_TIME_SAVED: i32 = 100;
+    const MINIMUM_TIME_SAVED: i32 = 40;
 
     let filename = "inputs/day20.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
-    let mut labyrinth = Labyrinth::from(&content);
+    let labyrinth = Labyrinth::from(&content);
 
-    count_cheats_saving_at_least(&mut labyrinth, MINIMUM_TIME_SAVED, MAX_CHEAT_MOVE)
+    count_cheats_saving_at_least(&labyrinth, MINIMUM_TIME_SAVED, MAX_CHEAT_MOVE)
 }
 
 

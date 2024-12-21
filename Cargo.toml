@@ -3,11 +3,11 @@ name = "adventofcode2024"
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
-debug = 1
+# [profile.release]
+# debug = 1
 
-[build]
-rustflags = ["-C", "symbol-mangling-version=v0"]
+# [build]
+# rustflags = ["-C", "symbol-mangling-version=v0"]
 
 [dependencies]
 pathfinding = "4.12.0"
