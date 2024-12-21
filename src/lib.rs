@@ -1,8 +1,9 @@
-use std::{collections::{HashSet, VecDeque}, fs};
+use std::{collections::HashSet, fs};
 
 use pathfinding::prelude::dijkstra;
 
 const END: char = 'E';
+const INITIAL_POSITION: (isize, isize) = (-1, -1);
 const NOTHING: char = '.';
 const START: char = 'S';
 const WALL: char = '#';
@@ -13,12 +14,11 @@ struct Labyrinth {
     start: (isize, isize),
     end: (isize, isize),
 
-    prohibited_cheats: HashSet<Cheat>,
+    cheats_used: HashSet<Cheat>,
 }
 
 impl Labyrinth {
     fn from(content: &str) -> Labyrinth {
-        const INITIAL_POSITION: (isize, isize) = (-1, -1);
         let mut terrain: Vec<Vec<char>> = Vec::new();
         let mut start = INITIAL_POSITION;
         let mut end = INITIAL_POSITION;
@@ -49,215 +49,205 @@ impl Labyrinth {
         assert_ne!(end, INITIAL_POSITION);
         assert_ne!(start, INITIAL_POSITION);
     
-        Labyrinth { terrain, start, end, prohibited_cheats: HashSet::new() }
+        Labyrinth { terrain, start, end, cheats_used: HashSet::new() }
     }
 
-    fn get_legal_positions_around(&self, position: (isize, isize)) -> Vec<(isize, isize)> {
-        self.get_positions_around(position).iter()
-            .copied()
-            .filter(|&(x,y)| self.terrain[y as usize][x as usize] != WALL)
-            .collect()
-    }
-
-    fn get_positions_around(&self, position: (isize, isize)) -> Vec<(isize, isize)> {
-        let (x, y) = position;
-        [(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)].iter()
-            .copied()
-            .filter(|&(x,y)| x >= 0 && y >= 0)
-            .filter(|&(x,y)| x < self.terrain[0].len() as isize && y < self.terrain.len() as isize)
-            .collect()
-    }
-
-    fn is_shortcut(&self, position: (isize, isize)) -> bool {
+    fn is_wall(&self, position: (isize, isize)) -> bool {
         let (x, y) = position;
         self.terrain[y as usize][x as usize] == WALL
-            && self.get_legal_positions_around(position).len() > 1
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, std::hash::Hash)]
-struct ReindeerState {
-    position: (isize, isize),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, std::hash::Hash)]
-struct Reindeer {
-    state: ReindeerState,
-    history: Vec<ReindeerState>,
-}
-
-impl ReindeerState {
-    fn new(position: (isize, isize)) -> Self {
-        ReindeerState { position }
-    }
-}
-
-impl Reindeer {
-    fn new(position: (isize, isize)) -> Self {
-        let state = ReindeerState::new(position);
-        let history: Vec<ReindeerState> = vec![state];
-        Reindeer { state, history }
     }
 
-    fn clone_with_state(&self, state: ReindeerState) -> Self {
-        let mut clone = self.clone();
-        clone.state = state;
-        clone.history.push(state);
-        clone
-    }
-}
-
-fn solve_labyrinth(reindeer: &Reindeer, labyrinth: &Labyrinth) -> Vec<Reindeer> {
-    let mut reindeer_at_the_end: Vec<Reindeer> = Vec::new();
-    let mut visited: HashSet<ReindeerState> = HashSet::new();
-    let mut to_visit: VecDeque<Reindeer> = VecDeque::new();
-    to_visit.push_back(reindeer.clone());
-
-    while let Some(reindeer) = to_visit.pop_front() {
-        if reindeer.state.position == labyrinth.end {
-            reindeer_at_the_end.push(reindeer);
-            continue;
-        }
-    
-        for new_position in labyrinth.get_legal_positions_around(reindeer.state.position) {
-            let new_state = ReindeerState::new(new_position);
-            if visited.contains(&new_state) {
-                continue;
-            } else {
-                visited.insert(new_state);
-            }
-            let new_reindeer = reindeer.clone_with_state(new_state);
-            to_visit.push_back(new_reindeer);
-        }
+    fn get_positions_around(&self, position: (isize, isize)) -> impl Iterator<Item = (isize, isize)> + use<'_> {
+        let (x, y) = position;
+        [(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)].into_iter()
+            .filter(|(x,y)| *x >= 0 && *y >= 0)
+            .filter(|(x,y)| *x < self.terrain[0].len() as isize && *y < self.terrain.len() as isize)
     }
 
-    reindeer_at_the_end
+    fn add_cheat(& mut self, cheat: Cheat) {
+        self.cheats_used.insert(cheat);
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, std::hash::Hash)]
 struct Position {
-    x: isize,
-    y: isize,
-    using_cheat: bool,
-    cheat_steps: isize,
-    entering_cheat_position: (isize, isize),
+    value: (isize, isize),
+    is_cheating: bool,
+    enable_cheat_position: (isize, isize),
+    last_exited_wall_position: (isize, isize),
+    step_in_cheat: isize,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, std::hash::Hash)]
 struct Cheat {
-    entering_cheat_position: (isize, isize),
-    exited_cheat_position: (isize, isize),
-}
-
-impl Cheat {
-    fn new(entering_cheat_position: (isize, isize), exited_cheat_position: (isize, isize)) -> Self {
-        Cheat { entering_cheat_position, exited_cheat_position }
-    }
+    enable_cheat_position: (isize, isize),
+    last_exited_wall_position: (isize, isize),
 }
 
 impl Position {
-    fn new(x: isize, y: isize, using_cheat: bool, cheat_steps: isize, entering_cheat_position: (isize, isize)) -> Self {
-        Position { x, y, using_cheat, cheat_steps, entering_cheat_position }
-    }
-
-    fn from_tuple(position: (isize, isize)) -> Self {
-        Position::new(position.0, position.1, false, 0, (-1, -1))
-    }
-
-    fn successors(&self, labyrinth: &Labyrinth, max_cheat_steps: isize) -> Vec<(Position, usize)> {
-        let cheat_steps = if self.using_cheat { self.cheat_steps + 1 } else { self.cheat_steps };
-        let mut successors: Vec<(Position, usize)>  = labyrinth.get_legal_positions_around((self.x, self.y))
-            .iter()
-            .filter(|&&(x, y)| !self.using_cheat
-                || !labyrinth.prohibited_cheats.contains(&Cheat::new(self.entering_cheat_position, (x,y))))
-            .map(|&(x, y)| (Position::new(x, y, false, cheat_steps, (-1, -1)), 1))
-            .collect();
-        if cheat_steps < max_cheat_steps {
-            let entering_cheat_position = if self.using_cheat {
-                self.entering_cheat_position
-            } else {
-                (self.x, self.y)
-            };
-            let cheat_steps = if ! self.using_cheat { self.cheat_steps + 1 } else { cheat_steps };
-            let wall_successors: Vec<(Position, usize)>  = labyrinth.get_positions_around((self.x, self.y))
-                .iter()
-                .filter(|&&(x,y)| labyrinth.terrain[y as usize][x as usize] == WALL)
-                .map(|&(x, y)| {
-                    (Position::new(x, y, true, cheat_steps, entering_cheat_position), 1)
-                })
-                .collect();
-            successors.extend(wall_successors);
+    fn new (value: (isize, isize)) -> Self {
+        Position {
+            value,
+            is_cheating: false,
+            enable_cheat_position: INITIAL_POSITION,
+            last_exited_wall_position: INITIAL_POSITION,
+            step_in_cheat: 0,
         }
-        successors
-      }
+    }
+
+    fn is_cheating(&self) -> bool {
+        self.is_cheating
+    }
+
+    fn start_cheating(&self, wall_position: (isize, isize)) -> Self {
+        assert!(!self.is_cheating() && self.step_in_cheat == 0);
+        Position {
+            value: wall_position,
+            is_cheating: true,
+            enable_cheat_position: self.value,
+            last_exited_wall_position: INITIAL_POSITION,
+            step_in_cheat: 1,
+        }
+    }
+
+    fn stop_cheating(&self, new_position: (isize, isize), max_cheat_move: isize) -> Self {
+        assert!(self.is_cheating() && self.step_in_cheat == max_cheat_move);
+        Position {
+            value: new_position,
+            is_cheating: false,
+            enable_cheat_position: self.enable_cheat_position,
+            last_exited_wall_position: self.last_exited_wall_position,
+            step_in_cheat: self.step_in_cheat,
+        }
+    }
+
+    fn move_while_cheating(&self, new_position: (isize, isize), max_cheat_move: isize) -> Self {
+        assert!(self.is_cheating() && self.step_in_cheat < max_cheat_move);
+        Position {
+            value: new_position,
+            is_cheating: self.is_cheating,
+            enable_cheat_position: self.enable_cheat_position,
+            last_exited_wall_position: self.last_exited_wall_position,
+            step_in_cheat: self.step_in_cheat + 1,
+        }
+    }
+
+    fn move_out_of_wall_while_cheating(&self, new_position: (isize, isize), max_cheat_move: isize) -> Self {
+        assert!(self.is_cheating() && self.step_in_cheat < max_cheat_move);
+        Position {
+            value: new_position,
+            is_cheating: self.is_cheating,
+            enable_cheat_position: self.enable_cheat_position,
+            last_exited_wall_position: new_position,
+            step_in_cheat: self.step_in_cheat + 1,
+        }
+    }
+
+    fn move_legally(&self, new_position: (isize, isize), max_cheat_move: isize) -> Self {
+        assert!(self.step_in_cheat <= max_cheat_move);
+        assert!(!self.is_cheating());
+        Position {
+            value: new_position,
+            is_cheating: self.is_cheating,
+            enable_cheat_position: self.enable_cheat_position,
+            last_exited_wall_position: self.last_exited_wall_position,
+            step_in_cheat: self.step_in_cheat,
+        }
+    }
+
+    fn move_to(&self, new_position: (isize, isize), labyrinth: &Labyrinth, max_cheat_move: isize) -> Option<Self> {
+        if labyrinth.is_wall(new_position) {
+            self.move_to_wall(new_position, labyrinth, max_cheat_move)
+        } else {
+            self.move_to_free_space(new_position, labyrinth, max_cheat_move)
+        }
+    }
+
+    fn move_to_wall(&self, wall_position: (isize, isize), _: &Labyrinth, max_cheat_move: isize) -> Option<Self> {
+        if !self.is_cheating() && self.step_in_cheat == 0 {
+            Some(self.start_cheating(wall_position))
+        } else if self.step_in_cheat < max_cheat_move {
+            Some(self.move_while_cheating(wall_position, max_cheat_move))
+        } else {
+            None
+        }
+    }
+
+    fn move_to_free_space(&self, new_position: (isize, isize), labyrinth: &Labyrinth, max_cheat_move: isize) -> Option<Self> {
+        if self.is_cheating()  {
+            let potential_position = if labyrinth.is_wall(self.value) {
+                if self.step_in_cheat < max_cheat_move {
+                    Some(self.move_out_of_wall_while_cheating(new_position, max_cheat_move))
+                } else {
+                    None
+                }
+            } else if self.step_in_cheat < max_cheat_move {
+                Some(self.move_while_cheating(new_position, max_cheat_move))
+            } else  {
+                Some(self.stop_cheating(new_position, max_cheat_move))
+            };
+            potential_position.filter(|x|
+                !((x.step_in_cheat == max_cheat_move || labyrinth.end == x.value)
+                    && labyrinth.cheats_used.contains(&x.get_cheat())))
+        } else {
+            Some(self.move_legally(new_position, max_cheat_move))
+        }
+    }
+
+    fn successors(&self, labyrinth: &Labyrinth, max_cheat_move: isize) -> Vec<(Position, usize)> {
+        labyrinth.get_positions_around(self.value)
+            .filter_map(|new_position|
+                self.move_to(new_position, labyrinth, max_cheat_move).map(|new_position| (new_position, 1))
+            )
+            .collect()
+    }
+
+    fn get_cheat(&self) -> Cheat {
+        assert!(self.enable_cheat_position != INITIAL_POSITION);
+        assert!(self.last_exited_wall_position != INITIAL_POSITION);
+        Cheat {
+            enable_cheat_position: self.enable_cheat_position,
+            last_exited_wall_position: self.last_exited_wall_position,
+        }
+    }
 }
 
-fn solve_dijkstra(labyrinth: &Labyrinth, max_cheat_steps: isize) -> Option<(Vec<Position>, usize)> {
-    let start = Position::from_tuple(labyrinth.start);
-    let end = Position::from_tuple(labyrinth.end);
-    dijkstra(&start, |p| p.successors(labyrinth, max_cheat_steps),
-        |p| p.x == end.x && p.y == end.y)
+fn solve_dijkstra(labyrinth: &Labyrinth, max_cheat_move: isize) -> Option<(Vec<Position>, usize)> {
+    let start = Position::new(labyrinth.start);
+    let end = Position::new(labyrinth.end);
+    dijkstra(&start, |p| p.successors(labyrinth, max_cheat_move), |p| p.value == end.value)
 }
 
-fn get_dijkstra_count(labyrinth: &Labyrinth, max_cheat_steps: isize) -> Option<usize> {
-    solve_dijkstra(labyrinth, max_cheat_steps).map(|(_, count)| count)
+fn calculate_time_saved(original_count: usize, new_count: usize) -> isize {
+    (original_count as isize) - (new_count as isize)
 }
 
-fn ghost_distance(rhs: (isize, isize), lhs: (isize, isize)) -> isize {
-    let (x1, y1) = rhs;
-    let (x2, y2) = lhs;
-    (x1.abs_diff(x2) + y1.abs_diff(y2)) as isize
+fn count_cheats_saving_at_least(labyrinth: & mut Labyrinth, min_time_saved: isize, max_cheat_move: isize) -> usize {
+    let mut count: usize = 0;
+    let (_, original_count) = solve_dijkstra(labyrinth, 0).expect("a solution");
+    println!("original count {}", original_count);
+    while let Some((last_path, new_count)) = solve_dijkstra(labyrinth, max_cheat_move) {
+        let saved = calculate_time_saved(original_count, new_count);
+        if saved < min_time_saved {
+            break;
+        }
+        println!("count {}", count);
+        println!("saved {}", saved);
+        labyrinth.add_cheat(last_path.last().expect("a position").get_cheat());
+        count += 1;
+    }
+    count
 }
 
 pub fn run() -> usize {
-    const MINIMUM_TIME_SAVED: isize = 76;
+    const MAX_CHEAT_MOVE: isize = 2;
+    const MINIMUM_TIME_SAVED: isize = 100;
 
     let filename = "inputs/day20.txt";
     let content = fs::read_to_string(filename).expect("Can't read file '{filename}'");
-    let labyrinth = Labyrinth::from(&content);
+    let mut labyrinth = Labyrinth::from(&content);
 
-    // let reindeer = Reindeer::new(labyrinth.start);
-    // let reindeer_at_the_end: Vec<Reindeer> = solve_labyrinth(&reindeer, &labyrinth);
-    // reindeer_at_the_end[0].history.len()
-
-    let (_, count) = solve_dijkstra(&labyrinth, 0).expect("a path");
-    println!("without cheats, count={:?}", count);
-
-    let mut labyrinth_with_cheats  = labyrinth.clone();
-    let mut saved_enough: usize = 0;
-    let mut last_run_saved_enough = true;
-    const MAX_CHEAT_STEPS: isize = 20;
-    while let Some((path, new_count)) = solve_dijkstra(&labyrinth_with_cheats, MAX_CHEAT_STEPS) {
-        if !last_run_saved_enough {
-            break;
-        }
-        let saved = (count as isize) - (new_count as isize);
-        if saved >= MINIMUM_TIME_SAVED {
-            let mut last_position: (isize, isize) = (0,0);
-            let mut entered_cheat_position: Option<(isize, isize)> = None;
-            let mut exited_cheat_position: Option<(isize, isize)> = None;
-            for position in path.iter() {
-                let (x, y) = (position.x, position.y);
-                if position.using_cheat {
-                    if entered_cheat_position.is_none() {
-                        entered_cheat_position = Some(last_position);
-                    }
-                } else if entered_cheat_position.is_some() && exited_cheat_position.is_none() {
-                    exited_cheat_position = Some((position.x, position.y));
-                }
-                last_position = (position.x, position.y);
-            }
-            println!("saved={:?}", saved);
-            println!("path={:?}", path);
-            saved_enough += 1;
-            labyrinth_with_cheats.prohibited_cheats.insert(Cheat::new
-                (entered_cheat_position.expect("entered_cheat_position"),
-                exited_cheat_position.expect("exited_cheat_position")));
-        } else {
-            last_run_saved_enough = false;
-        }
-    }
-    saved_enough
+    count_cheats_saving_at_least(&mut labyrinth, MINIMUM_TIME_SAVED, MAX_CHEAT_MOVE)
 }
 
 
@@ -270,4 +260,32 @@ pub fn run() -> usize {
 //     fn test_turn_to_face_changes_direction() {
 //         assert_eq!(1,1);
 //     }
+// }
+
+
+// fn solve_labyrinth(reindeer: &Reindeer, labyrinth: &Labyrinth) -> Vec<Reindeer> {
+//     let mut reindeer_at_the_end: Vec<Reindeer> = Vec::new();
+//     let mut visited: HashSet<ReindeerState> = HashSet::new();
+//     let mut to_visit: VecDeque<Reindeer> = VecDeque::new();
+//     to_visit.push_back(reindeer.clone());
+
+//     while let Some(reindeer) = to_visit.pop_front() {
+//         if reindeer.state.position == labyrinth.end {
+//             reindeer_at_the_end.push(reindeer);
+//             continue;
+//         }
+    
+//         for new_position in labyrinth.get_legal_positions_around(reindeer.state.position) {
+//             let new_state = ReindeerState::new(new_position);
+//             if visited.contains(&new_state) {
+//                 continue;
+//             } else {
+//                 visited.insert(new_state);
+//             }
+//             let new_reindeer = reindeer.clone_with_state(new_state);
+//             to_visit.push_back(new_reindeer);
+//         }
+//     }
+
+//     reindeer_at_the_end
 // }
